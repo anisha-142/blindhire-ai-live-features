@@ -9,6 +9,10 @@ import {
 import { CodingPlayground } from './CodingPlayground';
 import { computeLiveIntegrityRisk, getAdaptiveDifficultyRecommendation, AdaptiveSignal } from '../services/assessmentEngine';
 import { liveActivityService } from '../services/liveActivityService';
+import { accessibilityService } from '../services/accessibilityService';
+import { AccommodationRequestModal } from './AccommodationRequestModal';
+import { AccessibilityPreferences } from './AccessibilityPreferences';
+import { AccommodationSettings } from '../types';
 import { 
   ShieldCheck, 
   Clock, 
@@ -73,7 +77,20 @@ export const CandidateProctoredRunner: React.FC<CandidateProctoredRunnerProps> =
   const [markedForReview, setMarkedForReview] = useState<Record<string, boolean>>({});
   const [savedQuestionIds, setSavedQuestionIds] = useState<Record<string, boolean>>({});
   const [showSaveDropdown, setShowSaveDropdown] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(20 * 60); // 20 minutes
+
+  // Accessibility & Accommodations
+  const [accommodationSettings, setAccommodationSettings] = useState<AccommodationSettings>(
+    accessibilityService.getSettings()
+  );
+  const [showAccommodationModal, setShowAccommodationModal] = useState(false);
+  const initialBaseSeconds = Math.round(20 * 60 * accessibilityService.getTimeMultiplier());
+  const [timeRemaining, setTimeRemaining] = useState(initialBaseSeconds);
+
+  const handleAccommodationsSaved = (newSettings: AccommodationSettings) => {
+    setAccommodationSettings(newSettings);
+    const updatedSeconds = Math.round(20 * 60 * accessibilityService.getTimeMultiplier());
+    setTimeRemaining(updatedSeconds);
+  };
 
   // Anti-cheating & Telemetry State
   const [tabSwitches, setTabSwitches] = useState(0);
@@ -146,6 +163,21 @@ export const CandidateProctoredRunner: React.FC<CandidateProctoredRunnerProps> =
       window.removeEventListener('paste', handlePaste);
     };
   }, [step]);
+
+  // Keyboard shortcuts for MCQ option selection (keys 1-4) during Step 4
+  useEffect(() => {
+    if (step !== 4) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!currentQ || currentQ.type === 'code_challenge' || currentQ.type === 'code_completion' || currentQ.type === 'debugging') return;
+      const optCount = currentQ.options?.length || 0;
+      const keyNum = parseInt(e.key, 10);
+      if (keyNum >= 1 && keyNum <= Math.min(optCount, 9)) {
+        handleSelectOption(keyNum - 1);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [step, currentIdx, currentQ]);
 
   // Timer countdown
   useEffect(() => {
@@ -364,13 +396,18 @@ export const CandidateProctoredRunner: React.FC<CandidateProctoredRunnerProps> =
               Exit Assessment
             </button>
 
-            <button
-              onClick={() => setStep(2)}
-              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-slate-900 rounded-xl text-xs font-extrabold transition-all shadow-lg shadow-indigo-600/30 flex items-center gap-2"
-            >
-              <span>Continue to Instructions</span>
-              <ChevronRight size={14} />
-            </button>
+            <div className="flex items-center gap-3">
+              <AccessibilityPreferences
+                onOpenModal={() => setShowAccommodationModal(true)}
+              />
+              <button
+                onClick={() => setStep(2)}
+                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-slate-900 rounded-xl text-xs font-extrabold transition-all shadow-lg shadow-indigo-600/30 flex items-center gap-2"
+              >
+                <span>Continue to Instructions</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -608,6 +645,10 @@ export const CandidateProctoredRunner: React.FC<CandidateProctoredRunnerProps> =
                 <Send size={13} />
                 <span>Finish & Submit</span>
               </button>
+
+              <AccessibilityPreferences
+                onOpenModal={() => setShowAccommodationModal(true)}
+              />
 
               <button
                 onClick={() => setShowExitConfirm(true)}
@@ -866,6 +907,35 @@ export const CandidateProctoredRunner: React.FC<CandidateProctoredRunnerProps> =
               </div>
             </div>
           </div>
+        )}
+
+        {/* Exit Confirmation Modal */}
+        {showExitConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0a0d1c]/85 backdrop-blur-md animate-fadeIn">
+            <div className="stylish-card bg-white p-6 sm:p-8 rounded-3xl border border-white/15 max-w-md w-full shadow-2xl space-y-5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center">
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Exit Assessment?</h3>
+                <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                  Your progress will not be saved. You will need to restart the assessment.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 pt-2">
+                <button onClick={() => setShowExitConfirm(false)} className="flex-1 py-3 rounded-xl bg-slate-50 text-slate-600 text-xs font-bold">Cancel</button>
+                <button onClick={onExit} className="flex-1 py-3 rounded-xl bg-red-600 text-white text-xs font-bold shadow-lg shadow-red-600/30">Exit Now</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Accommodation Request Modal */}
+        {showAccommodationModal && (
+          <AccommodationRequestModal
+            onClose={() => setShowAccommodationModal(false)}
+            onSave={handleAccommodationsSaved}
+          />
         )}
       </div>
     );

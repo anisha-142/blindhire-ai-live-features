@@ -1,4 +1,6 @@
 import { BlindProfile, AssessmentQuestion } from "../types";
+import { sanitizePromptInput } from "./aiValidationService";
+import { logAIInteraction } from "./aiAuditService";
 
 /**
  * Calls the local /api/ai/generate proxy (see server.cjs) instead of hitting
@@ -8,23 +10,40 @@ import { BlindProfile, AssessmentQuestion } from "../types";
  * which every caller below treats the same as "AI unavailable" and falls
  * back to its deterministic offline behavior.
  */
-async function callAiProxy(prompt: string, options?: { temperature?: number }): Promise<any> {
-  const res = await fetch('/api/ai/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, temperature: options?.temperature })
-  });
+async function callAiProxy(
+  prompt: string,
+  options?: { temperature?: number; promptId?: string; promptVersion?: string }
+): Promise<any> {
+  const sanitizedPrompt = sanitizePromptInput(prompt);
+  const startTime = Date.now();
+  const promptId = options?.promptId || 'prompt_general';
+  const promptVersion = options?.promptVersion || '1.0';
 
-  if (!res.ok) {
-    throw new Error(`AI proxy unavailable (status ${res.status})`);
-  }
+  try {
+    const res = await fetch('/api/ai/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: sanitizedPrompt, temperature: options?.temperature })
+    });
 
-  const data = await res.json();
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!rawText) {
-    throw new Error('No data returned from AI');
+    if (!res.ok) {
+      throw new Error(`AI proxy unavailable (status ${res.status})`);
+    }
+
+    const data = await res.json();
+    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) {
+      throw new Error('No data returned from AI');
+    }
+
+    const duration = Date.now() - startTime;
+    logAIInteraction(promptId, promptVersion, sanitizedPrompt, rawText, 'gemini-1.5-flash', true, false, duration);
+    return JSON.parse(rawText);
+  } catch (err: any) {
+    const duration = Date.now() - startTime;
+    logAIInteraction(promptId, promptVersion, sanitizedPrompt, '', 'offline_fallback', false, true, duration);
+    throw err;
   }
-  return JSON.parse(rawText);
 }
 
 /**

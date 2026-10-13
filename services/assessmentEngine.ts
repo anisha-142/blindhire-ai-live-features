@@ -16,6 +16,7 @@ import {
   AntiCheatingLog
 } from '../types';
 import { questionBankService } from './questionBankService';
+import { enrichSkillVerificationItem } from './skillVerificationService';
 
 // Default recruiter assessment configuration
 export const DEFAULT_RECRUITER_SETTINGS: RecruiterSettings = {
@@ -594,7 +595,7 @@ export function evaluateAssessmentSubmission(
       notes = `Score (${testScorePct}%) is below optimal benchmark.`;
     }
 
-    return {
+    const baseItem: SkillVerificationMatrixItem = {
       skill: skillName,
       category: perf.category,
       claimedLevel,
@@ -605,6 +606,8 @@ export function evaluateAssessmentSubmission(
       correctCount: perf.correct,
       notes
     };
+
+    return enrichSkillVerificationItem(baseItem, profile.maskedName);
   });
 
   // Critical Skill Gatekeeper Check

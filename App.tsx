@@ -52,7 +52,11 @@ import {
   Bookmark,
   Flame,
   Star,
-  Brain
+  Brain,
+  GitBranch,
+  Scale,
+  ClipboardList,
+  LineChart
 } from 'lucide-react';
 import {
   PieChart,
@@ -144,6 +148,14 @@ import { LearningLab } from './components/LearningLab';
 import { ResumeStudio } from './components/ResumeStudio';
 import { AICareerCoach } from './components/AICareerCoach';
 import { InterviewSimulator } from './components/InterviewSimulator';
+import { RecruiterPipeline } from './components/RecruiterPipeline';
+import { FairnessBiasAuditDashboard } from './components/FairnessBiasAuditDashboard';
+import { AuditTrailDashboard } from './components/AuditTrailDashboard';
+import { ExecutiveDashboard } from './components/ExecutiveDashboard';
+import { PrivacyConsentCenter } from './components/PrivacyConsentCenter';
+import { DataRightsPanel } from './components/DataRightsPanel';
+import { ResumeAuthenticityPanel } from './components/ResumeAuthenticityPanel';
+import { auditTrailService } from './services/auditTrailService';
 
 // --- SAMPLE RESUMES FOR DEMO ---
 const SAMPLE_RESUMES = {
@@ -349,10 +361,13 @@ const ANALYTICS_DATA = [
 
 export default function App() {
   const [role, setRole] = useState<UserRole>(UserRole.NONE);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'candidates' | 'jobs' | 'questions' | 'analytics' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<
+    'dashboard' | 'candidates' | 'pipeline' | 'jobs' | 'questions' | 'analytics' | 'fairness_audit' | 'audit_trail' | 'executive' | 'settings'
+  >('dashboard');
 
   // Candidate Navigation Tabs
-  const [candidateTab, setCandidateTab] = useState<'mission' | 'resume_studio' | 'assessment' | 'learning_lab' | 'review' | 'coach' | 'interview'>('mission');
+  const [candidateTab, setCandidateTab] = useState<'mission' | 'resume_studio' | 'assessment' | 'learning_lab' | 'review' | 'coach' | 'interview' | 'privacy'>('mission');
+  const [hasCandidateConsent, setHasCandidateConsent] = useState(false);
 
   // Job & Candidate State
   const [jobs, setJobs] = useState<JobPost[]>(INITIAL_JOBS);
@@ -771,6 +786,12 @@ export default function App() {
       setSelectedDossier({ ...selectedDossier, isRevealed: true });
     }
     const cand = candidates.find(c => c.id === revealCandidateId);
+    auditTrailService.recordEvent({
+      eventType: 'CANDIDATE_UNMASKED',
+      recruiterId: 'recruiter_demo',
+      candidateId: revealCandidateId,
+      metadata: { action: 'unmasked_pii', candidateName: cand?.maskedName }
+    });
     showToast(`🔓 Identity revealed for ${cand?.maskedName || 'Candidate'}. Audit entry logged.`);
     liveActivityService.push('RECRUITER', 'Candidate identity revealed', `${cand?.maskedName || 'Candidate'} unmasked — logged to compliance audit trail.`, 'warning');
     setRevealCandidateId(null);
@@ -1083,7 +1104,8 @@ export default function App() {
                   { id: 'learning_lab', icon: '📚', label: 'Learning Lab', badge: savedQuestions.length > 0 ? `${savedQuestions.length}` : undefined },
                   { id: 'review', icon: '📖', label: 'Assessment Review', badge: generatedProfile.assessmentResult ? `${generatedProfile.assessmentResult.overallScore}%` : undefined },
                   { id: 'coach', icon: '🤖', label: 'AI Coach' },
-                  { id: 'interview', icon: '🎤', label: 'Interview Prep' }
+                  { id: 'interview', icon: '🎤', label: 'Interview Prep' },
+                  { id: 'privacy', icon: '🛡️', label: 'Privacy & Rights' }
                 ].map(nav => (
                   <button
                     key={nav.id}
@@ -1156,6 +1178,11 @@ export default function App() {
                   ))}
                 </select>
               </div>
+
+              {/* Candidate Privacy & Consent Center */}
+              <PrivacyConsentCenter
+                onConsentChange={(granted) => setHasCandidateConsent(granted)}
+              />
 
               {/* Upload Tabs */}
               <div className="flex gap-1.5 p-1.5 bg-slate-200/80 rounded-2xl">
@@ -1449,6 +1476,10 @@ export default function App() {
                   onNavigate={(t) => setCandidateTab('mission')}
                 />
               )}
+
+              {candidateTab === 'privacy' && (
+                <DataRightsPanel candidateId={generatedProfile?.id || 'candidate_self'} />
+              )}
             </div>
           )}
         </main>
@@ -1502,9 +1533,13 @@ export default function App() {
             {[
               { id: 'dashboard', icon: LayoutDashboard, label: 'Assessment Dashboard' },
               { id: 'candidates', icon: Users, label: 'Candidate Pool', count: candidates.length },
+              { id: 'pipeline', icon: GitBranch, label: 'Shortlist Pipeline', count: candidates.length },
               { id: 'jobs', icon: Briefcase, label: 'Job Requisitions', count: jobs.length },
               { id: 'questions', icon: BookOpen, label: 'Question Bank', count: questionBank.length },
               { id: 'analytics', icon: BarChart3, label: 'Fairness Analytics' },
+              { id: 'fairness_audit', icon: Scale, label: 'Bias & Adverse Impact' },
+              { id: 'audit_trail', icon: ClipboardList, label: 'Audit Trail' },
+              { id: 'executive', icon: LineChart, label: 'Executive Intelligence' },
               { id: 'settings', icon: Settings, label: 'Scoring & Notifications' },
             ].map((item) => (
               <button
@@ -1558,10 +1593,15 @@ export default function App() {
             <div>
               <h1 className="text-lg font-extrabold text-slate-900 capitalize tracking-tight leading-tight">
                 {activeTab === 'dashboard' ? 'Assessment Dashboard' :
-                 activeTab === 'candidates' ? 'Candidate Pipeline' :
+                 activeTab === 'candidates' ? 'Candidate Pool' :
+                 activeTab === 'pipeline' ? 'Structured Recruiter Pipeline' :
                  activeTab === 'jobs' ? 'Job Requisitions' :
                  activeTab === 'questions' ? 'Question Bank' :
-                 activeTab === 'analytics' ? 'Fairness Analytics' : 'Scoring & Settings'}
+                 activeTab === 'analytics' ? 'Fairness Analytics' :
+                 activeTab === 'fairness_audit' ? 'Fairness & Bias Audit Dashboard' :
+                 activeTab === 'audit_trail' ? 'Immutable Recruiter Audit Trail' :
+                 activeTab === 'executive' ? 'Executive ROI & Governance Dashboard' :
+                 'Scoring & Settings'}
               </h1>
             </div>
             <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-mono font-extrabold shadow-sm">
@@ -2207,6 +2247,29 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {/* TAB: STRUCTURED RECRUITER PIPELINE */}
+          {activeTab === 'pipeline' && (
+            <RecruiterPipeline
+              candidates={candidates}
+              onSelectCandidate={(cand) => setSelectedScorecardProfile(cand)}
+            />
+          )}
+
+          {/* TAB: FAIRNESS & BIAS AUDIT DASHBOARD */}
+          {activeTab === 'fairness_audit' && (
+            <FairnessBiasAuditDashboard />
+          )}
+
+          {/* TAB: IMMUTABLE AUDIT TRAIL */}
+          {activeTab === 'audit_trail' && (
+            <AuditTrailDashboard />
+          )}
+
+          {/* TAB: EXECUTIVE ROI & GOVERNANCE */}
+          {activeTab === 'executive' && (
+            <ExecutiveDashboard candidates={candidates} />
+          )}
         </div>
       </main>
 
@@ -2370,6 +2433,14 @@ export default function App() {
                     </span>
                   ))}
                 </div>
+              </div>
+
+              {/* Resume Authenticity & Duplicate Detection */}
+              <div className="pt-2">
+                <ResumeAuthenticityPanel
+                  candidateId={selectedDossier.id}
+                  resumeText={selectedDossier.originalText || selectedDossier.professionalSummary}
+                />
               </div>
             </div>
 

@@ -31,6 +31,11 @@ import {
   Layers
 } from 'lucide-react';
 
+import { HumanDecisionPanel } from './HumanDecisionPanel';
+import { ExplainableScoreModal } from './ExplainableScoreModal';
+import { SkillVerificationCard } from './SkillVerificationCard';
+import { SkillEvidenceDrawer } from './SkillEvidenceDrawer';
+
 interface AssessmentReportModalProps {
   profile: BlindProfile;
   result: AssessmentResult;
@@ -47,6 +52,9 @@ export const AssessmentReportModal: React.FC<AssessmentReportModalProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'verification' | 'coding' | 'cheating' | 'notification'>('overview');
   const [copiedNotification, setCopiedNotification] = useState(false);
   const [copiedReport, setCopiedReport] = useState(false);
+  const [showExplainableModal, setShowExplainableModal] = useState(false);
+  const [verificationViewMode, setVerificationViewMode] = useState<'cards' | 'table'>('cards');
+  const [selectedEvidenceItem, setSelectedEvidenceItem] = useState<any | null>(null);
 
   const getRecommendationBadge = (rec: CandidateRecommendation) => {
     switch (rec) {
@@ -225,18 +233,28 @@ Integrity Score: ${result.antiCheating.integrityScore}% (${result.antiCheating.t
             <div className="space-y-6">
               {/* Score KPIs */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                <div className="stylish-card bg-white p-4 rounded-2xl border border-indigo-500/30 text-center">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Overall Weighted</span>
-                  <div className="text-3xl font-extrabold text-slate-900 font-mono mt-1">{result.overallScore}%</div>
-                  <span className="text-[10px] text-emerald-400 font-semibold">{result.correctAnswers}/{result.totalQuestions} Passed</span>
-                  {(() => {
-                    const conf = computeScoreConfidence(result.overallScore, result.totalQuestions);
-                    return (
-                      <span className="text-[9px] text-slate-500 font-medium block mt-0.5" title="Wald approximation, 95% confidence">
-                        ±{conf.marginOfError}pts · {conf.label}
-                      </span>
-                    );
-                  })()}
+                <div className="stylish-card bg-white p-4 rounded-2xl border border-indigo-500/30 text-center flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Overall Weighted</span>
+                    <div className="text-3xl font-extrabold text-slate-900 font-mono mt-1">{result.overallScore}%</div>
+                    <span className="text-[10px] text-emerald-600 font-semibold">{result.correctAnswers}/{result.totalQuestions} Passed</span>
+                    {(() => {
+                      const conf = computeScoreConfidence(result.overallScore, result.totalQuestions);
+                      return (
+                        <span className="text-[9px] text-slate-500 font-medium block mt-0.5" title="Wald approximation, 95% confidence">
+                          ±{conf.marginOfError}pts · {conf.label}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowExplainableModal(true)}
+                    className="mt-2.5 px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-extrabold border border-indigo-200 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Sparkles size={11} className="text-indigo-600" />
+                    <span>Why this score?</span>
+                  </button>
                 </div>
 
                 <div className="stylish-card bg-white p-4 rounded-2xl border border-slate-200 text-center">
@@ -318,68 +336,112 @@ Integrity Score: ${result.antiCheating.integrityScore}% (${result.antiCheating.t
                   </div>
                 </div>
               </div>
+
+              {/* HUMAN DECISION PANEL */}
+              <HumanDecisionPanel 
+                profile={profile} 
+                result={result} 
+              />
             </div>
           )}
 
           {/* TAB 2: SKILL EXAGGERATION & VERIFICATION MATRIX */}
           {activeTab === 'verification' && (
             <div className="space-y-4">
-              <div className="p-3.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-500">
-                💡 <strong>Resume Verification Protocol:</strong> Compares candidate self-reported resume claims against real-time test demonstrated accuracy to detect exaggerations or unverified skills.
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
+                <div>
+                  💡 <strong>Resume Verification Protocol:</strong> Evaluates self-reported resume claims against verified test accuracy to uncover skill exaggerations and verified strengths.
+                </div>
+                <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 self-start sm:self-auto flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setVerificationViewMode('cards')}
+                    className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                      verificationViewMode === 'cards'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Cards View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVerificationViewMode('table')}
+                    className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                      verificationViewMode === 'table'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Table View
+                  </button>
+                </div>
               </div>
 
-              <div className="stylish-card bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-white text-slate-500 uppercase text-[10px] tracking-wider">
-                    <tr>
-                      <th className="p-3.5">Skill</th>
-                      <th className="p-3.5">Resume Claim</th>
-                      <th className="p-3.5 text-center">Test Score</th>
-                      <th className="p-3.5 text-center">Demonstrated Level</th>
-                      <th className="p-3.5">Verification Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5 font-sans">
-                    {result.skillVerificationMatrix.map((item, idx) => {
-                      const isExaggerated = item.verificationStatus.includes('Exaggeration');
-                      const isStrong = item.verificationStatus.includes('Strong');
+              {verificationViewMode === 'cards' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {result.skillVerificationMatrix.map((item, idx) => (
+                    <SkillVerificationCard
+                      key={idx}
+                      item={item}
+                      onViewEvidence={(it) => setSelectedEvidenceItem(it)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="stylish-card bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-white text-slate-500 uppercase text-[10px] tracking-wider">
+                      <tr>
+                        <th className="p-3.5">Skill</th>
+                        <th className="p-3.5">Resume Claim</th>
+                        <th className="p-3.5 text-center">Test Score</th>
+                        <th className="p-3.5 text-center">Demonstrated Level</th>
+                        <th className="p-3.5">Verification Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 font-sans">
+                      {result.skillVerificationMatrix.map((item, idx) => {
+                        const isExaggerated = item.verificationStatus.includes('Exaggeration');
+                        const isStrong = item.verificationStatus.includes('Strong');
 
-                      return (
-                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-indigo-400" />
-                            <span>{item.skill}</span>
-                          </td>
-                          <td className="p-3.5 font-mono text-slate-600">{item.claimedLevel}</td>
-                          <td className="p-3.5 text-center font-mono font-bold text-slate-900">
-                            <span className={`px-2 py-0.5 rounded-lg border ${
-                              isStrong ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
-                              isExaggerated ? 'bg-red-500/20 text-red-300 border-red-500/40' :
-                              'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
-                            }`}>
-                              {item.testScorePercentage}%
-                            </span>
-                          </td>
-                          <td className="p-3.5 text-center font-mono text-indigo-300 font-semibold">{item.demonstratedLevel}</td>
-                          <td className="p-3.5">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                              isStrong 
-                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' 
-                                : isExaggerated 
-                                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' 
-                                : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
-                            }`}>
-                              {isStrong && <CheckCircle size={12} className="text-emerald-400" />}
-                              {isExaggerated && <AlertTriangle size={12} className="text-amber-400" />}
-                              <span>{item.verificationStatus}</span>
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                              <span>{item.skill}</span>
+                            </td>
+                            <td className="p-3.5 font-mono text-slate-600">{item.claimedLevel}</td>
+                            <td className="p-3.5 text-center font-mono font-bold text-slate-900">
+                              <span className={`px-2 py-0.5 rounded-lg border ${
+                                isStrong ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
+                                isExaggerated ? 'bg-red-500/20 text-red-300 border-red-500/40' :
+                                'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                              }`}>
+                                {item.testScorePercentage}%
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-center font-mono text-indigo-300 font-semibold">{item.demonstratedLevel}</td>
+                            <td className="p-3.5">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                                isStrong 
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' 
+                                  : isExaggerated 
+                                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' 
+                                  : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                              }`}>
+                                {isStrong && <CheckCircle size={12} className="text-emerald-400" />}
+                                {isExaggerated && <AlertTriangle size={12} className="text-amber-400" />}
+                                <span>{item.verificationStatus}</span>
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -511,6 +573,21 @@ Integrity Score: ${result.antiCheating.integrityScore}% (${result.antiCheating.t
           </div>
         </div>
       </div>
+
+      {showExplainableModal && (
+        <ExplainableScoreModal
+          profile={profile}
+          result={result}
+          onClose={() => setShowExplainableModal(false)}
+        />
+      )}
+
+      {selectedEvidenceItem && (
+        <SkillEvidenceDrawer
+          item={selectedEvidenceItem}
+          onClose={() => setSelectedEvidenceItem(null)}
+        />
+      )}
     </div>
   );
 };

@@ -154,10 +154,13 @@ export interface SkillVerificationMatrixItem {
   claimedLevel: ExperienceLevel;
   testScorePercentage: number;
   demonstratedLevel: ExperienceLevel;
-  verificationStatus: 'Verified Strong' | 'Verified Competent' | 'Skill Exaggeration / Needs Review' | 'Potential Skill Gap';
+  verificationStatus: 'Verified Strong' | 'Verified Competent' | 'Skill Exaggeration / Needs Review' | 'Potential Skill Gap' | 'Exaggeration Risk' | 'Not Assessed';
   questionsAttempted: number;
   correctCount: number;
   notes: string;
+  evidenceSummary?: string;
+  recommendedLearningAction?: string;
+  difficultyWeightedPerformance?: number;
 }
 
 export interface CodingSubmissionResult {
@@ -176,6 +179,7 @@ export interface CodingSubmissionResult {
 export type CandidateRecommendation = 
   | 'Strongly Recommended'
   | 'Recommended'
+  | 'Review Required'
   | 'Needs Further Review'
   | 'Not Recommended';
 
@@ -255,6 +259,13 @@ export interface BlindProfile {
   assessmentResult?: AssessmentResult;
   assessmentStatus?: 'Not Started' | 'In Progress' | 'Completed';
   currentBlueprint?: AssessmentBlueprint;
+  // Executive extensions
+  demographics?: DemographicData;
+  consentRecord?: ConsentRecord;
+  authenticityReport?: ResumeAuthenticityReport;
+  pipelineStage?: PipelineStage;
+  accommodations?: AccommodationSettings;
+  recruiterDecision?: DecisionAuditEntry;
 }
 
 export interface RecruiterSettings {
@@ -485,4 +496,322 @@ export interface WeakAreaResult {
   practicedAt: string;
   questionCount: number;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIORITY 1: HUMAN DECISION PANEL & EXPLAINABLE AI SCORE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type RecruiterFinalDecision = 
+  | 'Shortlist'
+  | 'Move to Interview'
+  | 'Request More Information'
+  | 'Reject'
+  | 'Keep in Review';
+
+export type DecisionReason = 
+  | 'Technical skill gap'
+  | 'Coding assessment below threshold'
+  | 'JD fit below threshold'
+  | 'Integrity/proctoring concern requiring review'
+  | 'Resume authenticity concern requiring review'
+  | 'Strong overall performance'
+  | 'Meets critical skill requirements'
+  | 'Other documented reason';
+
+export interface DecisionAuditEntry {
+  id: string;
+  recruiterId: string;
+  candidateBlindId: string;
+  aiRecommendation: CandidateRecommendation;
+  finalDecision: RecruiterFinalDecision;
+  decisionReason: DecisionReason;
+  otherReasonExplanation?: string;
+  isOverride: boolean;
+  timestamp: string;
+  jobRequisitionId?: string;
+  assessmentResultVersion?: string;
+}
+
+export interface ExplainableScore {
+  overallScore: number;
+  technicalKnowledgeScore: number;
+  codingScore: number;
+  aptitudeScore: number;
+  jdMatchScore: number;
+  weights: {
+    technical: number;
+    coding: number;
+    aptitude: number;
+    jdMatch: number;
+  };
+  criticalSkillGates: Array<{
+    skill: string;
+    threshold: number;
+    candidateScore: number;
+    passed: boolean;
+  }>;
+  integritySummary: {
+    integrityScore: number;
+    tabSwitches: number;
+    windowBlurs: number;
+    fullscreenExits: number;
+    violationsCount: number;
+    flags: string[];
+  };
+  skillVerificationSummary: Array<{
+    skill: string;
+    claimedLevel: string;
+    demonstratedLevel: string;
+    score: number;
+    status: string;
+  }>;
+  plainEnglishExplanation: string;
+  generatedVia: 'gemini' | 'deterministic_fallback';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIORITY 2: FAIRNESS & BIAS AUDIT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DemographicData {
+  gender?: 'Woman' | 'Man' | 'Non-Binary / Gender Diverse' | 'Prefer not to say';
+  category?: 'General' | 'Underrepresented Minority' | 'Veteran' | 'Non-Traditional Education' | 'Prefer not to say';
+  disabilityStatus?: 'Yes' | 'No' | 'Prefer not to say';
+  locationRegion?: 'North America' | 'Europe' | 'Asia-Pacific' | 'Latin America' | 'Middle East & Africa' | 'Other';
+  consentedAt?: string;
+}
+
+export interface ImpactRatio {
+  group: string;
+  category: string;
+  candidateCount: number;
+  selectedCount: number;
+  selectionRate: number; // percentage
+  referenceRate: number; // highest performing group rate
+  impactRatio: number; // selectionRate / referenceRate
+  status: 'Review Required' | 'High Disparity Alert' | 'Within Monitoring Range';
+  sampleSizeWarning?: boolean;
+}
+
+export interface FairnessAlert {
+  id: string;
+  type: 'disparate_impact' | 'skill_pass_rate_gap' | 'question_disparity';
+  title: string;
+  description: string;
+  severity: 'critical' | 'warning' | 'info';
+  group: string;
+  impactRatio?: number;
+  skillOrQuestion?: string;
+  timestamp: string;
+}
+
+export interface FairnessAuditReport {
+  auditPeriod: string;
+  totalCandidates: number;
+  assessedCandidates: number;
+  consentedCandidates: number;
+  impactRatios: ImpactRatio[];
+  alerts: FairnessAlert[];
+  scoreDistributionByGroup: Array<{ group: string; avgScore: number; medianScore: number; count: number }>;
+  passRateBySkillAndGroup: Array<{ skill: string; group: string; passRate: number }>;
+  disparateQuestions: Array<{ questionId: string; questionText: string; maxGroupPassRate: number; minGroupPassRate: number; gap: number }>;
+  disclaimer: string;
+  generatedAt: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIORITY 3: CANDIDATE CONSENT & DATA RIGHTS CENTER
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ConsentRecord {
+  candidateId: string;
+  aiEvaluationConsented: boolean;
+  demographicMonitoringConsented: boolean;
+  dataRetentionAccepted: boolean;
+  consentedAt: string;
+  withdrawnAt?: string;
+}
+
+export interface DataRetentionPolicy {
+  retentionDays: number;
+  autoPurgeDate: string;
+  identityUnlocked: boolean;
+}
+
+export interface DataDeletionRequest {
+  requestId: string;
+  candidateBlindId: string;
+  requestedAt: string;
+  status: 'Completed' | 'Pending';
+  anonymizedAuditNote: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIORITY 5: RESUME AUTHENTICITY & DUPLICATE CHECK
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DuplicateMatch {
+  matchedCandidateMaskedName: string;
+  matchedCandidateId: string;
+  similarityPercentage: number;
+  matchedSnippet: string;
+}
+
+export interface ResumeAuthenticityReport {
+  candidateId: string;
+  status: 'Authenticity: High' | 'Authenticity: Needs Review' | 'Authenticity: Potential Concern';
+  overallAuthenticityScore: number; // 0-100
+  duplicateMatches: DuplicateMatch[];
+  boilerplateAiScore: number; // % boilerplate
+  dateInconsistencies: string[];
+  unsupportedSkillClaims: string[];
+  missingTechnicalDepthSignals: string[];
+  recruiterReviewStatus: 'Unreviewed' | 'Marked as Reviewed' | 'Clarification Requested' | 'Escalated for Manual Review';
+  recruiterNote?: string;
+  evaluatedAt: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIORITY 6: IMMUTABLE RECRUITER AUDIT TRAIL
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AuditEventType =
+  | 'CANDIDATE_RESUME_UPLOADED'
+  | 'RESUME_VIEWED_BY_RECRUITER'
+  | 'BLIND_PROFILE_GENERATED'
+  | 'IDENTITY_UNLOCKED'
+  | 'ASSESSMENT_STARTED'
+  | 'ASSESSMENT_COMPLETED'
+  | 'PROCTORING_FLAG_CREATED'
+  | 'PROCTORING_FLAG_RESOLVED'
+  | 'AI_RECOMMENDATION_GENERATED'
+  | 'RECRUITER_DECISION_MADE'
+  | 'AI_RECOMMENDATION_OVERRIDDEN'
+  | 'JOB_THRESHOLD_CHANGED'
+  | 'QUESTION_BANK_CHANGED'
+  | 'CONSENT_GRANTED'
+  | 'CONSENT_WITHDRAWN'
+  | 'DATA_DELETION_REQUESTED'
+  | 'DATA_DELETION_COMPLETED';
+
+export interface AuditEvent {
+  id: string;
+  actorId: string;
+  actorRole: 'RECRUITER' | 'CANDIDATE' | 'SYSTEM' | 'ADMIN';
+  actionType: AuditEventType;
+  targetObjectId: string;
+  candidateBlindId?: string;
+  beforeValue?: string;
+  afterValue?: string;
+  aiRecommendationAtTime?: CandidateRecommendation;
+  reason?: string;
+  timestamp: string;
+  ipDeviceHash: string;
+  immutableHash: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIORITY 7: ACCESSIBLE ASSESSMENTS & ACCOMMODATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AccommodationSettings {
+  extraTimeOption: 'standard' | '25_percent' | '50_percent' | 'custom';
+  customTimeMultiplier?: number;
+  customTimeReason?: string;
+  highContrastMode: boolean;
+  colorBlindSafeMode: boolean;
+  disableWebcamProctoring: boolean;
+  keyboardOnlyMode: boolean;
+  alternativeAssessmentRequested: boolean;
+  alternativeAssessmentReason?: string;
+  requestedAt?: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIORITY 8: STRUCTURED RECRUITER SHORTLIST WORKFLOW
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type PipelineStage = 
+  | 'New Candidate'
+  | 'Blind Screening'
+  | 'Skill Assessment'
+  | 'AI Recommendation'
+  | 'Recruiter Review'
+  | 'Shortlisted'
+  | 'Interview Scheduled'
+  | 'Final Decision';
+
+export interface SavedFilter {
+  id: string;
+  name: string;
+  criteria: {
+    minScore?: number;
+    skills?: string[];
+    minIntegrity?: number;
+    noCriticalGaps?: boolean;
+    authenticityReviewRequired?: boolean;
+    recommendation?: string;
+  };
+}
+
+export interface InterviewSchedule {
+  scheduledDate: string;
+  timeSlot: string;
+  interviewerName?: string;
+  interviewType: 'Technical Screen' | 'System Architecture' | 'Hiring Manager' | 'Culture & Collaboration';
+  meetingLinkPlaceholder: string;
+  notes?: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIORITY 9: SECURE AI GATEWAY
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PromptVersion {
+  promptId: string;
+  promptVersion: string;
+  model: string;
+  temperature: number;
+  systemInstruction: string;
+}
+
+export interface AIRequestMetadata {
+  promptId: string;
+  promptVersion: string;
+  inputHash: string;
+  timestamp: string;
+}
+
+export interface AIResponseMetadata {
+  promptId: string;
+  promptVersion: string;
+  outputHash: string;
+  model: string;
+  success: boolean;
+  isOfflineFallback: boolean;
+  offlineFallbackNotice?: string;
+  durationMs: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIORITY 10: EXECUTIVE METRICS DASHBOARD
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ExecutiveMetrics {
+  totalCandidates: number;
+  assessmentsCompleted: number;
+  completionRate: number; // percentage
+  avgTimeToShortlistDays: number;
+  stronglyRecommendedCount: number;
+  verifiedSkillRate: number; // percentage
+  skillExaggerationRate: number; // percentage
+  integrityFlagRate: number; // percentage
+  recruiterOverrideRate: number; // percentage
+  fairnessAlertCount: number;
+  topVerifiedSkills: Array<{ skill: string; count: number; avgScore: number }>;
+  mostCommonSkillGaps: Array<{ skill: string; count: number }>;
+  estimatedRecruiterTimeSavedHours: number;
+  estimatedScreeningTimeReductionPercent: number;
+}
+
 

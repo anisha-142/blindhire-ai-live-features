@@ -13,6 +13,29 @@ const ROOT = __dirname;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL_NAME = 'gemini-1.5-flash';
 
+// Rate limiting: max 60 requests per 60 seconds per IP
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 60;
+const MAX_PAYLOAD_SIZE = 1024 * 1024; // 1MB
+const rateLimitMap = new Map();
+
+function checkRateLimit(clientIp) {
+  const now = Date.now();
+  let clientRecord = rateLimitMap.get(clientIp);
+  if (!clientRecord) {
+    clientRecord = { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS };
+    rateLimitMap.set(clientIp, clientRecord);
+    return true;
+  }
+  if (now > clientRecord.resetAt) {
+    clientRecord.count = 1;
+    clientRecord.resetAt = now + RATE_LIMIT_WINDOW_MS;
+    return true;
+  }
+  clientRecord.count++;
+  return clientRecord.count <= RATE_LIMIT_MAX_REQUESTS;
+}
+
 /**
  * Proxies a Gemini generateContent call. The API key never leaves this
  * process — the browser only ever talks to /api/ai/generate on localhost.
@@ -111,9 +134,31 @@ const server = http.createServer((req, res) => {
 
   // --- Server-side AI proxy: keeps GEMINI_API_KEY out of the browser ---
   if (reqPath === '/api/ai/generate' && req.method === 'POST') {
+    const clientIp = req.socket.remoteAddress || '127.0.0.1';
+    if (!checkRateLimit(clientIp)) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Rate limit exceeded. Maximum 60 AI requests per minute.' }));
+      return;
+    }
+
     let body = '';
-    req.on('data', (chunk) => { body += chunk; });
+    let bodyLength = 0;
+    let isTooLarge = false;
+
+    req.on('data', (chunk) => {
+      bodyLength += chunk.length;
+      if (bodyLength > MAX_PAYLOAD_SIZE) {
+        isTooLarge = true;
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload Too Large: Maximum 1MB allowed.' }));
+        req.destroy();
+        return;
+      }
+      body += chunk;
+    });
+
     req.on('end', async () => {
+      if (isTooLarge) return;
       try {
         const parsed = JSON.parse(body || '{}');
         const result = await proxyGeminiRequest(parsed);
