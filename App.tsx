@@ -53,6 +53,7 @@ import {
   Flame,
   Star,
   Brain,
+  PlusCircle,
   GitBranch,
   Scale,
   ClipboardList,
@@ -451,7 +452,8 @@ export default function App() {
   // Question Bank State
   const [questionBank, setQuestionBank] = useState<AssessmentQuestion[]>(questionBankService.getAllQuestions());
   const [questionSearch, setQuestionSearch] = useState('');
-  const [questionSkillFilter, setQuestionSkillFilter] = useState('ALL');
+  const [filterQuestionSkill, setFilterQuestionSkill] = useState('ALL');
+  const [filterQuestionDifficulty, setFilterQuestionDifficulty] = useState('ALL');
   const [showNewQuestionModal, setShowNewQuestionModal] = useState(false);
   const [newQuestionForm, setNewQuestionForm] = useState<{
     skill: string;
@@ -833,10 +835,11 @@ export default function App() {
         q.skill.toLowerCase().includes(questionSearch.toLowerCase()) ||
         (q.tags && q.tags.some(t => t.toLowerCase().includes(questionSearch.toLowerCase())));
 
-      const matchesSkill = questionSkillFilter === 'ALL' || q.skill.toLowerCase().includes(questionSkillFilter.toLowerCase());
-      return matchesText && matchesSkill;
+      const matchesSkill = filterQuestionSkill === 'ALL' || q.skill.toLowerCase().includes(filterQuestionSkill.toLowerCase());
+      const matchesDifficulty = filterQuestionDifficulty === 'ALL' || q.difficulty === filterQuestionDifficulty;
+      return matchesText && matchesSkill && matchesDifficulty;
     });
-  }, [questionBank, questionSearch, questionSkillFilter]);
+  }, [questionBank, questionSearch, filterQuestionSkill, filterQuestionDifficulty]);
 
   const handleCreateQuestion = () => {
     const opts = newQuestionForm.options.split('\n').filter(o => o.trim().length > 0);
@@ -1444,7 +1447,7 @@ export default function App() {
                   savedQuestions={savedQuestions}
                   onSaveQuestion={(item, col) => handleSaveQuestion(item, col)}
                   onStartPractice={(items) => {
-                    const weakSkills = [...new Set(items.map(i => i.skill))];
+                    const weakSkills: string[] = Array.from(new Set(items.map(i => i.skill)));
                     const challenge = generateWeakAreaChallenge(weakSkills, questionBankService.getAllQuestions(), 6);
                     setTestQuestions(challenge);
                     setIsTakingTest(true);

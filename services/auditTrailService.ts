@@ -128,6 +128,37 @@ class AuditTrailService {
     return event;
   }
 
+  public recordEvent(params: {
+    eventType?: string;
+    actionType?: AuditEventType;
+    recruiterId?: string;
+    actorId?: string;
+    candidateId?: string;
+    targetObjectId?: string;
+    reason?: string;
+    metadata?: Record<string, any>;
+  }): AuditEvent {
+    let actionType: AuditEventType = 'RESUME_VIEWED_BY_RECRUITER';
+    if (params.actionType) {
+      actionType = params.actionType;
+    } else if (params.eventType === 'CANDIDATE_UNMASKED') {
+      actionType = 'IDENTITY_UNLOCKED';
+    } else if (params.eventType === 'CANDIDATE_SHORTLISTED') {
+      actionType = 'RECRUITER_DECISION_MADE';
+    } else if (params.eventType === 'SCORECARD_VIEWED') {
+      actionType = 'RESUME_VIEWED_BY_RECRUITER';
+    }
+
+    return this.logEvent({
+      actorId: params.actorId || params.recruiterId || 'recruiter_demo',
+      actorRole: 'RECRUITER',
+      actionType,
+      targetObjectId: params.targetObjectId || params.candidateId || 'unknown_target',
+      candidateBlindId: params.candidateId,
+      reason: params.reason || (params.metadata ? JSON.stringify(params.metadata) : 'Recruiter action logged')
+    });
+  }
+
   public getAllEvents(): AuditEvent[] {
     return [...this.events];
   }
